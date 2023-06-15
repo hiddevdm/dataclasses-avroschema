@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 import typing
 from dataclasses import dataclass, field
 from string import Template
@@ -11,6 +12,8 @@ from dataclasses_avroschema.types import JsonDict
 
 from . import avro_to_python_utils, templates
 from .base_class import BaseClassEnum
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,7 +50,7 @@ class ModelGenerator:
     base_class_decorator: str = ""
     avro_type_to_python: typing.Dict[str, str] = field(init=False)
     logical_types_imports: typing.Dict[str, str] = field(init=False)
-    reorder_fields_with_defaults: bool = True
+    default_fields_last: bool = True
 
     def __post_init__(self) -> None:
         self.imports.add(self.base_class_to_imports[self.base_class])
@@ -56,9 +59,10 @@ class ModelGenerator:
 
         if self.base_class == BaseClassEnum.AVRO_MODEL.value:
             self.imports.add("import dataclasses")
-            if self.reorder_fields_with_defaults:
+            if self.default_fields_last:
                 self.base_class_decorator = "@dataclasses.dataclass"
             else:
+                logger.warning("Generating dataclasses with kw_only=True, only supported from Python 3.10")
                 # Without kw_only=True, dataclasses do not support fields with defaults before fields without defaults.
                 self.base_class_decorator = "@dataclasses.dataclass(kw_only=True)"
         else:
@@ -130,7 +134,7 @@ class ModelGenerator:
         record_fields: typing.List[JsonDict] = schema["fields"]
 
         # Sort the fields according whether it has a default value
-        if self.reorder_fields_with_defaults:
+        if self.default_fields_last:
             record_fields.sort(
                 key=lambda field: 1 if "default" in field.keys() or field_utils.NULL in field["type"] else 0
             )

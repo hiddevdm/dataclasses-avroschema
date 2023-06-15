@@ -431,10 +431,9 @@ class User(AvroModel):
     money_available: float
     encoded: bytes = b"Hi"
 """
-    model_generator = ModelGenerator(reorder_fields_with_defaults=False)
+    model_generator = ModelGenerator(default_fields_last=False)
     result = model_generator.render(schema=schema)
 
-    # write the module to temporary file
     (tmp_path / "user.py").write_text(result)
     user_module = import_module_from_path(module_name="user", file_path=tmp_path / "user.py")
     user = user_module.User(age=1, weight=1, money_available=1.1)  # not providing values for default fields
