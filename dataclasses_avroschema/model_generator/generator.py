@@ -44,9 +44,10 @@ class ModelGenerator:
         }
     )
     # represent the decorator to add in the base class
-    base_class_decotator: str = ""
+    base_class_decorator: str = ""
     avro_type_to_python: typing.Dict[str, str] = field(init=False)
     logical_types_imports: typing.Dict[str, str] = field(init=False)
+    reorder_fields_with_defaults: bool = True
 
     def __post_init__(self) -> None:
         self.imports.add(self.base_class_to_imports[self.base_class])
@@ -55,7 +56,11 @@ class ModelGenerator:
 
         if self.base_class == BaseClassEnum.AVRO_MODEL.value:
             self.imports.add("import dataclasses")
-            self.base_class_decotator = "@dataclasses.dataclass"
+            if self.reorder_fields_with_defaults:
+                self.base_class_decorator = "@dataclasses.dataclass"
+            else:
+                # Without kw_only=True, dataclasses do not support fields with defaults before fields without defaults.
+                self.base_class_decorator = "@dataclasses.dataclass(kw_only=True)"
         else:
             self.dataclass_field_template = templates.pydantic_field_template
 
@@ -125,7 +130,10 @@ class ModelGenerator:
         record_fields: typing.List[JsonDict] = schema["fields"]
 
         # Sort the fields according whether it has a default value
-        record_fields.sort(key=lambda field: 1 if "default" in field.keys() or field_utils.NULL in field["type"] else 0)
+        if self.reorder_fields_with_defaults:
+            record_fields.sort(
+                key=lambda field: 1 if "default" in field.keys() or field_utils.NULL in field["type"] else 0
+            )
 
         rendered_fields = self.field_identation.join(
             [self.render_field(field=field, model_name=name) for field in record_fields]
@@ -134,7 +142,7 @@ class ModelGenerator:
 
         rendered_class = templates.class_template.safe_substitute(
             name=name,
-            decorator=self.base_class_decotator,
+            decorator=self.base_class_decorator,
             base_class=self.base_class,
             fields=rendered_fields,
             docstring=docstring,

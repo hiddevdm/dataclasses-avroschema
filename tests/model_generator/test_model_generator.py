@@ -1,5 +1,18 @@
+import importlib
+from pathlib import Path
+
 from dataclasses_avroschema import ModelGenerator, field_utils, types
 from dataclasses_avroschema.model_generator.avro_to_python_utils import render_datetime
+
+
+def import_module_from_path(module_name: str, file_path: Path):
+    """
+    Import module from path
+    """
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_model_generator_primitive_types(schema: types.JsonDict) -> None:
@@ -400,3 +413,41 @@ class Address(AvroModel):
     model_generator = ModelGenerator()
     result = model_generator.render_module(schemas=[schema, schema_2])
     assert result.strip() == expected_result.strip()
+
+
+def test_model_generator_retain_schema_field_order(schema: types.JsonDict, tmp_path) -> None:
+    expected_result_substring = """
+@dataclasses.dataclass(kw_only=True)
+class User(AvroModel):
+    \"""
+    An User
+    \"""
+    name: str = "marcos"
+    age: types.Int32
+    pet_age: types.Int32 = 1
+    height: types.Float32 = 10.1
+    weight: types.Int32
+    is_student: bool = True
+    money_available: float
+    encoded: bytes = b"Hi"
+"""
+    model_generator = ModelGenerator(reorder_fields_with_defaults=False)
+    result = model_generator.render(schema=schema)
+
+    # write the module to temporary file
+    (tmp_path / "user.py").write_text(result)
+    user_module = import_module_from_path(module_name="user", file_path=tmp_path / "user.py")
+    user = user_module.User(age=1, weight=1, money_available=1.1)  # not providing values for default fields
+
+    assert expected_result_substring in result
+    assert user.asdict() == {
+        "name": "marcos",
+        "age": 1,
+        "pet_age": 1,
+        "height": 10.1,
+        "weight": 1,
+        "is_student": True,
+        "money_available": 1.1,
+        "encoded": b"Hi",
+    }
+    assert user_module.User.avro_schema_to_python() == schema
